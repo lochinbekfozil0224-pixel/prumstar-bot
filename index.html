@@ -1,0 +1,913 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<title>PRUM STAR</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/@lottiefiles/lottie-player@2.0.4/dist/lottie-player.js"></script>
+<script>
+tailwind.config = {
+  theme: { extend: {
+    colors: {
+      bg: '#000000', card: '#1c1c1e', card2: '#2c2c2e', line: '#2c2c2e',
+      tg: '#3390ec', tgblue: '#007aff', green: '#34c759', sub: '#8e8e93',
+    },
+    borderRadius: { xl2: '20px', xl3: '26px' },
+  }}
+}
+</script>
+<style>
+  :root { color-scheme: dark; }
+  html,body,#root { height:100%; }
+  body {
+    margin:0; background:#000; color:#fff;
+    font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display","Helvetica Neue",Roboto,system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased; overscroll-behavior:none;
+  }
+  ::-webkit-scrollbar{ width:0; height:0; }
+  .tap{ transition:transform .12s ease, background .15s ease; -webkit-tap-highlight-color:transparent; }
+  .tap:active{ transform:scale(.97); }
+  @keyframes fadeUp{ from{opacity:0; transform:translateY(10px);} to{opacity:1; transform:none;} }
+  .screen{ animation:fadeUp .28s ease both; }
+  .safe-b{ padding-bottom:calc(env(safe-area-inset-bottom) + 96px); }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useMemo } = React;
+
+/* ====================== SOZLAMALAR ====================== */
+const ADMIN_ID = 8135915671;            // faqat shu odam Admin panel ko'radi
+const NEWS_CHANNEL = "ArzonStars".replace("ArzonStars","PRUM_STAR"); // @PRUM_STAR
+const HELP_USERNAME = "yordamad";        // @yordamad
+const VERSION = "PRUM STAR v1.0";
+
+/* ⚠️ MUHIM: bu yerga Railway backend havolangni yoz, masalan:
+   const API_BASE = "https://prumstar-bot-production.up.railway.app";
+   Bo'sh qolsa — namuna ma'lumot ishlatiladi (faqat ko'rish uchun). */
+const API_BASE = "";
+
+async function api(path, opts={}){
+  const headers = { "X-Init-Data": window.Telegram?.WebApp?.initData || "", ...(opts.headers||{}) };
+  let body = opts.body;
+  if(opts.json){ headers["Content-Type"]="application/json"; body=JSON.stringify(opts.json); }
+  const res = await fetch(API_BASE + path, { method: opts.method||"GET", headers, body });
+  if(!res.ok) throw new Error(await res.text().catch(()=>res.status));
+  return res.json();
+}
+
+/* Emoji o'rniga media (GIF/MP4/Lottie json). API'dan to'ladi (admin yuklaydi). */
+let CARD_MEDIA = { stars:{}, premium:{}, gifts:{}, ref:{} };
+let IS_ADMIN = false;   // /api/config dan keladi
+
+/* ====================== TILLAR ====================== */
+const LANGS = [
+  { code:"uz_cyrl", flag:"🇺🇿", name:"Ўзбекча" },
+  { code:"uz",      flag:"🇺🇿", name:"O'zbekcha" },
+  { code:"ru",      flag:"🇷🇺", name:"Русский" },
+  { code:"en",      flag:"🇬🇧", name:"English" },
+  { code:"kk",      flag:"🇰🇿", name:"Қазақша" },
+];
+
+const STR = {
+  uz: {
+    main:"Asosiy", referral:"Referal", history:"Tarix", rating:"Reyting",
+    topup:"Hisobni to'ldirish",
+    stars_t:"Telegram Stars", stars_s:"Hamyonbop va tezkor",
+    prem_t:"Telegram Premium", prem_s:"Hamyonbop va arzon",
+    gifts_t:"Telegram Gifts", gifts_s:"Chiroyli sovg'alar",
+    last_orders:"OXIRGI BUYURTMALAR", no_orders:"Buyurtmalar yo'q",
+    stars_buy:"Telegram Stars olish", stars_buy_s:"O'zingiz yoki yaqinlaringiz uchun Stars balansini to'ldiring — qulay to'lov usullari bilan.",
+    to_whom:"Kimga?", to_self:"O'zimga", uname_ph:"@username kiriting...",
+    choose_pack:"To'plamni tanlang", all_packs:"Barcha to'plamlar", other_amount:"Boshqa miqdor",
+    enter_amount:"Miqdorni kiriting", total:"Jami:", buy:"Telegram Stars olish",
+    prem_buy:"Telegram Premium olish", prem_buy_s:"O'zingiz yoki yaqinlaringiz uchun Premium — qulay to'lov usullari bilan.",
+    choose_dur:"Muddatni tanlang", admin_via:"Admin orqali", prem_gift:"Premium sovg'a qilish", buy_hist:"Xaridlar tarixi",
+    month:"oy", year:"yil",
+    gift_all:"Barchasi", gift_ord:"Oddiy", gift_rare:"Noodatiy", gift_title:"Telegram Gift",
+    ref_t:"Referral dasturi", ref_s:"Do'stlaringizni taklif qiling va ularning xaridlaridan Stars ishlang!",
+    ref_prem:"Telegram Premium", ref_prem_s:"Do'stingizning Premium xaridi uchun +15",
+    ref_stars:"Yulduzlar", ref_stars_s:"Do'stingizning 100 Stars xaridi uchun +5",
+    invite:"Do'stlarni taklif qilish", avail:"Mavjud", friends:"Do'stlar", your_friends:"Do'stlaringiz", copied:"Havola nusxalandi!",
+    hist_t:"Buyurtmalar tarixi", h_all:"Hammasi", h_stars:"Stars", h_prem:"Premium", h_gift:"Gift", h_acc:"Hisobni", h_topup:"To'ldirish", balance:"Balans",
+    r_all:"Butun vaqt", r_month:"Oy", r_week:"Hafta",
+    p_balance:"Balans", p_lang:"Til", p_help:"Yordam", p_news:"Yangiliklar kanali", p_admin:"Admin panel",
+    lang_title:"Til",
+    cur_balance:"Joriy balans", topup_sum:"TO'LDIRISH SUMMASI", minimal:"Minimal: 3,000 so'm", topup_btn:"To'ldirish", or:"YOKI",
+    no_uname:"Sizda username yo'q. Telegram sozlamalaridan username qo'ying.", som:"so'm",
+    admin_soon:"Admin panel keyingi bosqichda (3-bosqich) to'liq ulanadi. Quyidagilar bo'ladi:",
+  },
+};
+// ru / en — asosiy stringlar (qolganlari uz ga qaytadi)
+STR.ru = { ...STR.uz,
+  main:"Главная", referral:"Рефералы", history:"История", rating:"Рейтинг",
+  topup:"Пополнить счёт", stars_s:"Удобно и быстро", prem_s:"Удобно и дёшево", gifts_s:"Красивые подарки",
+  last_orders:"ПОСЛЕДНИЕ ЗАКАЗЫ", no_orders:"Нет заказов", to_whom:"Кому?", to_self:"Себе",
+  choose_pack:"Выберите набор", all_packs:"Все наборы", other_amount:"Другая сумма", enter_amount:"Введите сумму",
+  total:"Итого:", buy:"Купить Telegram Stars", choose_dur:"Выберите срок", admin_via:"Через админа",
+  prem_gift:"Подарить Premium", buy_hist:"История покупок", month:"мес", year:"год",
+  gift_all:"Все", gift_ord:"Обычные", gift_rare:"Редкие", ref_t:"Реферальная программа",
+  invite:"Пригласить друзей", avail:"Доступно", friends:"Друзья", your_friends:"Ваши друзья", copied:"Ссылка скопирована!",
+  hist_t:"История заказов", h_all:"Все", h_topup:"Пополнение", balance:"Баланс",
+  r_all:"Всё время", r_month:"Месяц", r_week:"Неделя",
+  p_balance:"Баланс", p_lang:"Язык", p_help:"Помощь", p_news:"Канал новостей", p_admin:"Админ панель",
+  lang_title:"Язык", cur_balance:"Текущий баланс", topup_sum:"СУММА ПОПОЛНЕНИЯ", minimal:"Минимум: 3,000 сум",
+  topup_btn:"Пополнить", or:"ИЛИ", som:"сум", no_uname:"У вас нет username. Добавьте его в настройках Telegram.",
+};
+STR.en = { ...STR.uz,
+  main:"Main", referral:"Referral", history:"History", rating:"Rating",
+  topup:"Top up balance", stars_s:"Easy and fast", prem_s:"Easy and cheap", gifts_s:"Beautiful gifts",
+  last_orders:"RECENT ORDERS", no_orders:"No orders", to_whom:"To whom?", to_self:"Myself",
+  choose_pack:"Choose a pack", all_packs:"All packs", other_amount:"Other amount", enter_amount:"Enter amount",
+  total:"Total:", buy:"Buy Telegram Stars", choose_dur:"Choose duration", admin_via:"Via admin",
+  prem_gift:"Gift Premium", buy_hist:"Purchase history", month:"mo", year:"yr",
+  gift_all:"All", gift_ord:"Regular", gift_rare:"Rare", ref_t:"Referral program",
+  invite:"Invite friends", avail:"Available", friends:"Friends", your_friends:"Your friends", copied:"Link copied!",
+  hist_t:"Order history", h_all:"All", h_topup:"Top-up", balance:"Balance",
+  r_all:"All time", r_month:"Month", r_week:"Week",
+  p_balance:"Balance", p_lang:"Language", p_help:"Help", p_news:"News channel", p_admin:"Admin panel",
+  lang_title:"Language", cur_balance:"Current balance", topup_sum:"TOP-UP AMOUNT", minimal:"Minimum: 3,000 so'm",
+  topup_btn:"Top up", or:"OR", som:"so'm", no_uname:"You have no username. Add one in Telegram settings.",
+};
+STR.uz_cyrl = { ...STR.uz, main:"Асосий", referral:"Реферал", history:"Тарих", rating:"Рейтинг",
+  topup:"Ҳисобни тўлдириш", to_self:"Ўзимга", p_lang:"Тил", p_help:"Ёрдам", p_news:"Янгиликлар канали", p_admin:"Админ панел" };
+STR.kk = { ...STR.uz, main:"Басты", referral:"Рефералдар", history:"Тарих", rating:"Рейтинг",
+  topup:"Шотты толтыру", to_self:"Өзіме", p_lang:"Тіл", p_help:"Көмек", p_news:"Жаңалықтар арнасы", p_admin:"Әкімші панелі" };
+
+/* ====================== NAMUNA MA'LUMOTLAR (3-bosqichda backend'dan keladi) ====================== */
+let PER_STAR = 224;  // 1 star narxi (so'm). API'dan keladi (admin o'zgartiradi).
+const STAR_AMOUNTS = [50,75,100,200,300,500,1000];
+const buildPacks = () => STAR_AMOUNTS.map(s=>({stars:s, price:s*PER_STAR}));
+let STAR_PACKS = buildPacks();
+let PREMIUM_PLANS = [
+  {months:1, label:"1 oy", price:52000, disc:0, admin:true},
+  {months:3, label:"3 oy", price:190000, disc:20},
+  {months:6, label:"6 oy", price:250000, disc:37},
+  {months:12, label:"1 yil", price:420000, disc:42},
+];
+const premLabel = m => m===12 ? "1 yil" : m+" oy";
+let GIFTS = [
+  {n:"Ayiq",e:"🧸",p:4000},{n:"Yurak",e:"💝",p:4000},{n:"Atirgul",e:"🌹",p:7000},
+  {n:"Sovg'a",e:"🎁",p:7000},{n:"Archa",e:"🎄",p:14000,r:1},{n:"Yangi Yil Ayig'i",e:"🧸",p:14000,r:1},
+  {n:'Yurak "Love"',e:"💗",p:14000,r:1},{n:"Yurakli Ayiq",e:"🧸",p:14000,r:1},{n:"Shampan",e:"🍾",p:14000},
+  {n:"Raketa",e:"🚀",p:14000},{n:"Gul",e:"💐",p:14000},{n:"Tort",e:"🎂",p:14000},
+  {n:"Pushti Ayiq",e:"🧸",p:14000,r:1},{n:"Tangalik Ayiq",e:"🍀",p:14000,r:1},{n:"Olmos",e:"💎",p:14000},
+];
+let RATING = [
+  {name:".", stars:5800, rank:1, m:1},
+  {name:"shaha |", stars:4700, rank:2, m:2},
+  {name:"Баходир Зунунханов | Дастурчи", stars:2400, rank:3, m:3},
+  {name:"Мухриддин", stars:2400, uzs:470000, rank:4},
+  {name:"Reyd | IIV", stars:2300, uzs:453000, rank:5},
+  {name:"Икболжон", stars:1800, uzs:350000, rank:6},
+  {name:"Fozilxon", stars:1700, uzs:339000, rank:7},
+];
+
+const fmt = n => n.toLocaleString('ru-RU');
+const kfmt = n => n>=1000 ? (n/1000).toLocaleString('ru-RU',{maximumFractionDigits:1})+" ming" : ""+n;
+
+/* ====================== TELEGRAM ====================== */
+const tg = window.Telegram?.WebApp;
+function getUser(){
+  const u = tg?.initDataUnsafe?.user;
+  if(u) return { id:u.id, username:u.username, name:[u.first_name,u.last_name].filter(Boolean).join(" "), photo:u.photo_url };
+  // brauzerda oldindan ko'rish uchun namuna (admin sifatida — Admin panel ko'rinadi)
+  return { id:ADMIN_ID, username:"fozilov2006", name:"Лочинбек Фозилов", photo:"" };
+}
+
+/* ====================== UI BO'LAKLAR ====================== */
+function Header({title, onBack, onClose}){
+  return (
+    <div className="sticky top-0 z-20 bg-bg/95 backdrop-blur px-4 pt-3 pb-2">
+      <div className="flex items-center justify-between">
+        <button onClick={onBack||onClose} className="tap text-[17px] text-white flex items-center gap-1">
+          {onBack ? <span>‹ Назад</span> : <span>Закрыть</span>}
+        </button>
+        <div className="text-center">
+          <div className="font-semibold text-[16px] leading-tight">ArzonStarsBot | Orginal</div>
+          <div className="text-[12px] text-sub leading-tight">мини-приложение</div>
+        </div>
+        <div className="w-9 h-9 rounded-full bg-card2 flex items-center justify-center text-sub text-lg">···</div>
+      </div>
+      {title && <div className="text-[26px] font-bold mt-3">{title}</div>}
+    </div>
+  );
+}
+
+function Avatar({user, size=40, ring}){
+  const initial = (user.name||"U").trim()[0]||"U";
+  return user.photo
+    ? <img src={user.photo} className={`rounded-full object-cover ${ring?'ring-2 ring-tg':''}`} style={{width:size,height:size}} />
+    : <div className={`rounded-full bg-gradient-to-br from-zinc-600 to-zinc-800 flex items-center justify-center text-white font-semibold ${ring?'ring-2 ring-tg':''}`} style={{width:size,height:size,fontSize:size*0.4}}>{initial}</div>;
+}
+
+/* Emoji o'rniga harakatlanadigan media. src bo'lsa — GIF/MP4/Lottie ko'rsatadi,
+   bo'lmasa — oddiy emoji. Fayl turini o'zi aniqlaydi. */
+function Media({src, type, emoji, size=44}){
+  if(!src) return <span style={{fontSize:size*0.8, lineHeight:1}}>{emoji}</span>;
+  const ext = (type || (src.split('?')[0].split('.').pop()||"")).toLowerCase();
+  const style = {width:size, height:size, objectFit:'contain'};
+  if(ext==="json" || type==="lottie")
+    return <lottie-player src={src} autoplay loop style={{width:size,height:size}}></lottie-player>;
+  if(["mp4","webm","mov"].includes(ext))
+    return <video src={src} autoPlay loop muted playsInline style={style}></video>;
+  return <img src={src} style={style} alt="" />;  // gif, png, jpg, webp
+}
+
+function BottomNav({tab,setTab,user}){
+  const T = STR_CTX();
+  const items=[["main","★",T.main],["referral","👥",T.referral],["history","↺",T.history],["rating","🏆",T.rating]];
+  return (
+    <div className="fixed bottom-0 left-0 right-0 z-30 px-3 pb-[calc(env(safe-area-inset-bottom)+10px)] pt-2 bg-gradient-to-t from-black via-black to-transparent">
+      <div className="flex items-center gap-2">
+        <div className="flex-1 flex items-center justify-around bg-card/90 backdrop-blur rounded-xl3 py-2.5">
+          {items.map(([k,ic,lbl])=>(
+            <button key={k} onClick={()=>setTab(k)} className="tap flex flex-col items-center gap-0.5 px-2">
+              <span className={`text-[18px] ${tab===k?'text-tg':'text-sub'}`}>{ic}</span>
+              <span className={`text-[11px] ${tab===k?'text-tg':'text-sub'}`}>{lbl}</span>
+            </button>
+          ))}
+        </div>
+        <button onClick={()=>setTab("profile")} className="tap">
+          <Avatar user={user} size={56} ring />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ---- "Kimga?" bloki (Stars/Premium uchun) ---- */
+function ToWhom({user, target, setTarget}){
+  const T = STR_CTX();
+  const [note,setNote]=useState("");
+  function self(){
+    if(user.username){ setTarget("@"+user.username); setNote(""); }
+    else setNote(T.no_uname);
+  }
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-[18px] font-bold">{T.to_whom}</div>
+        <button onClick={self} className="tap bg-tgblue text-white font-semibold text-[15px] px-5 py-1.5 rounded-full">{T.to_self}</button>
+      </div>
+      <div className="flex items-center gap-2 bg-card rounded-xl2 px-4 h-14">
+        <span className="text-sub text-lg">🔍</span>
+        <input value={target} onChange={e=>{setTarget(e.target.value);setNote("");}} placeholder={T.uname_ph}
+          className="flex-1 bg-transparent outline-none text-[17px] placeholder:text-sub" />
+      </div>
+      {note && <div className="text-[13px] text-amber-400 mt-2 px-1">{note}</div>}
+    </div>
+  );
+}
+
+/* ====================== EKRANLAR ====================== */
+function MainScreen({user, go, setTab}){
+  const T = STR_CTX();
+  const cards=[
+    ["stars",CARD_MEDIA.stars,"🦆",T.stars_t,T.stars_s,"from-amber-900/40 to-zinc-900"],
+    ["premium",CARD_MEDIA.premium,"💳",T.prem_t,T.prem_s,"from-fuchsia-900/40 to-zinc-900"],
+    ["gifts",CARD_MEDIA.gifts,"🎁",T.gifts_t,T.gifts_s,"from-rose-900/40 to-zinc-900"],
+  ];
+  return (
+    <div className="screen px-4 safe-b">
+      <div className="flex items-center justify-between mt-2 mb-4">
+        <button onClick={()=>setTab("profile")} className="tap bg-card rounded-full pr-3 pl-1 py-1 flex items-center gap-2">
+          <Avatar user={user} size={34}/><span className="text-sub">›</span>
+        </button>
+        <button onClick={()=>go("balans")} className="tap bg-green text-black font-bold text-[16px] px-6 py-3 rounded-full shadow-[0_0_20px_rgba(52,199,89,.4)]">{T.topup}</button>
+      </div>
+      {cards.map(([k,media,ic,t,s,grad])=>(
+        <button key={k} onClick={()=>go(k)} className={`tap w-full text-left mb-4 rounded-xl3 p-4 bg-gradient-to-br ${grad} flex items-center gap-4`}>
+          <div className="w-16 h-16 rounded-2xl bg-black/40 flex items-center justify-center overflow-hidden">
+            <Media emoji={ic} src={media.src} type={media.type} size={48}/>
+          </div>
+          <div className="flex-1">
+            <div className="text-[20px] font-bold">{t}</div>
+            <div className="text-sub text-[15px]">{s}</div>
+          </div>
+          <span className="text-sub text-xl">›</span>
+        </button>
+      ))}
+      <div className="text-sub text-[13px] font-semibold tracking-wide mt-6 mb-8">{T.last_orders}</div>
+      <div className="text-center text-sub mt-10">{T.no_orders}</div>
+    </div>
+  );
+}
+
+function StarsScreen({user, go}){
+  const T = STR_CTX();
+  const [target,setTarget]=useState("");
+  const [sel,setSel]=useState(null);
+  const [unit,setUnit]=useState("stars");   // stars | som
+  const [val,setVal]=useState("");
+
+  // hisoblash
+  let stars=0, total=0;
+  if(sel!=null){ stars=STAR_PACKS[sel].stars; total=STAR_PACKS[sel].price; }
+  else if(val){
+    const n=parseInt(val)||0;
+    if(unit==="stars"){ stars=n; total=n*PER_STAR; }
+    else { total=n; stars=Math.floor(n/PER_STAR); }
+  }
+  const pickPack=i=>{ setSel(i); setVal(""); };
+  const onCustom=v=>{ setVal(v.replace(/[^0-9]/g,"")); setSel(null); };
+
+  return (
+    <div className="screen safe-b">
+      <Header onBack={()=>go("main")} />
+      <div className="px-4">
+        <div className="text-[28px] font-bold mt-1">{T.stars_buy} 🦆</div>
+        <div className="text-sub text-[15px] mt-1 mb-5">{T.stars_buy_s}</div>
+        <ToWhom user={user} target={target} setTarget={setTarget}/>
+        <div className="text-[18px] font-bold mt-6 mb-3">{T.choose_pack}</div>
+        <div className="space-y-3">
+          {STAR_PACKS.map((p,i)=>(
+            <button key={i} onClick={()=>pickPack(i)}
+              className={`tap w-full flex items-center justify-between px-5 h-16 rounded-xl3 border ${sel===i?'border-tg bg-tg/10':'border-line bg-card/40'}`}>
+              <span className="flex items-center gap-3 text-[19px] font-semibold">⭐️ {p.stars} Stars</span>
+              <span className="text-sub text-[17px]">{fmt(p.price)} {T.som}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* Boshqa miqdor — o'zi yozadi, sayt hisoblaydi */}
+        <div className="bg-card/40 rounded-xl3 mt-4 p-4">
+          <div className="text-tg font-semibold mb-3">{T.other_amount}</div>
+          <div className="flex items-center gap-2">
+            <input value={val} onChange={e=>onCustom(e.target.value)} inputMode="numeric" placeholder={T.enter_amount}
+              className="flex-1 bg-transparent outline-none text-[18px] placeholder:text-sub"/>
+            <div className="flex bg-card2 rounded-xl p-1">
+              <button onClick={()=>setUnit("stars")} className={`tap px-4 py-1.5 rounded-lg text-[14px] font-semibold ${unit==="stars"?'bg-tgblue text-white':'text-sub'}`}>Stars</button>
+              <button onClick={()=>setUnit("som")} className={`tap px-4 py-1.5 rounded-lg text-[14px] font-semibold ${unit==="som"?'bg-tgblue text-white':'text-sub'}`}>{T.som}</button>
+            </div>
+          </div>
+          {val && stars>0 &&
+            <div className="text-sub text-[14px] mt-3 border-t border-line pt-3">
+              ⭐️ {fmt(stars)} Stars  ·  {fmt(total)} {T.som}
+            </div>}
+        </div>
+
+        <div className="flex items-center justify-between mt-6 mb-24">
+          <span className="text-sub text-[15px]">{T.total}</span>
+          <span className="text-tg font-bold text-[20px]">{fmt(total)} {T.som}</span>
+        </div>
+        <BuyButton disabled={total<=0} label={`${T.buy}${stars>0?` · ${fmt(stars)} ⭐️`:''}`} onClick={()=>alert("To'lov 4-bosqichda (Paylov) ulanadi")} />
+      </div>
+    </div>
+  );
+}
+
+function PremiumScreen({user, go}){
+  const T = STR_CTX();
+  const [target,setTarget]=useState("");
+  const [sel,setSel]=useState(null);
+  return (
+    <div className="screen safe-b">
+      <Header onBack={()=>go("main")} />
+      <div className="px-4">
+        <div className="text-[28px] font-bold mt-1 text-center">{T.prem_buy} 💳</div>
+        <div className="text-sub text-[15px] mt-1 mb-5 text-center">{T.prem_buy_s}</div>
+        <ToWhom user={user} target={target} setTarget={setTarget}/>
+        <div className="flex items-center justify-between mt-6 mb-3">
+          <div className="text-[18px] font-bold">{T.choose_dur}</div>
+          <span className="bg-green text-black text-[13px] font-bold px-2 py-1 rounded-lg">-42%</span>
+        </div>
+        <div className="space-y-4">
+          {PREMIUM_PLANS.map((p,i)=>(
+            <button key={i} onClick={()=>setSel(i)}
+              className={`tap w-full flex items-center justify-between px-5 h-16 rounded-xl3 border ${sel===i?'border-tg bg-tg/10':'border-line bg-card/40'}`}>
+              <span className="flex items-center gap-3 text-[19px] font-bold">
+                {p.label}
+                {p.disc>0 && <span className="bg-tgblue text-white text-[13px] font-bold px-2 py-0.5 rounded-lg">-{p.disc}%</span>}
+                {p.admin && <span className="bg-card2 text-sub text-[13px] px-2 py-0.5 rounded-lg">{T.admin_via}</span>}
+              </span>
+              <span className="text-[18px] font-semibold">{fmt(p.price)} {T.som}</span>
+            </button>
+          ))}
+        </div>
+        <BuyButton disabled={sel==null} label={T.prem_gift} onClick={()=>alert("To'lov 4-bosqichda (Paylov) ulanadi")} />
+        <div className="text-center text-tg font-semibold mt-4">{T.buy_hist}</div>
+      </div>
+    </div>
+  );
+}
+
+function GiftsScreen({go}){
+  const T = STR_CTX();
+  const [filter,setFilter]=useState("all");
+  const list = GIFTS.filter(g=> filter==="all"?true : filter==="rare"?g.r : !g.r);
+  const tabs=[["all",T.gift_all],["ord",T.gift_ord],["rare",T.gift_rare]];
+  return (
+    <div className="screen safe-b">
+      <Header onBack={()=>go("main")} />
+      <div className="px-4">
+        <div className="text-[26px] font-bold mt-1 mb-3">{T.gift_title}</div>
+        <div className="flex gap-2 mb-4">
+          {tabs.map(([k,l])=>(
+            <button key={k} onClick={()=>setFilter(k)}
+              className={`tap flex-1 py-3 rounded-xl2 font-semibold text-[15px] ${filter===k?'bg-tgblue text-white':'bg-card2 text-sub'}`}>{l}</button>
+          ))}
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          {list.map((g,i)=>(
+            <button key={i} onClick={()=>alert("To'lov 4-bosqichda ulanadi")} className="tap relative bg-card2/60 rounded-xl2 p-3 flex flex-col items-center">
+              {g.r && <span className="absolute top-2 right-2 bg-amber-500 text-black text-[10px] font-bold px-1.5 py-0.5 rounded">Noodatiy</span>}
+              <div className="my-3"><Media emoji={g.e} src={g.media?.src} type={g.media?.type} size={52}/></div>
+              <div className="text-[14px] font-semibold text-center leading-tight">{g.n}</div>
+              <div className="text-tg text-[14px] mt-1">{fmt(g.p)} {T.som}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ReferralScreen({user}){
+  const T = STR_CTX();
+  const [data,setData]=useState({available:0,count:0,link:`https://t.me/PrumStarBot?start=ref_${user.id}`,friends:[]});
+  useEffect(()=>{ if(API_BASE) api("/api/referral").then(setData).catch(()=>{}); },[]);
+  const link = data.link;
+  return (
+    <div className="screen px-4 pt-3 safe-b">
+      <div className="flex flex-col items-center">
+        <div className="w-28 h-28 rounded-3xl bg-gradient-to-br from-sky-400 to-amber-300 flex items-center justify-center mt-4 overflow-hidden">
+          <Media emoji="🐤" src={CARD_MEDIA.ref.src} type={CARD_MEDIA.ref.type} size={80}/>
+        </div>
+        <div className="text-[28px] font-bold mt-4">{T.ref_t}</div>
+        <div className="text-sub text-center text-[15px] mt-2 px-6">{T.ref_s}</div>
+      </div>
+      <div className="bg-card/60 rounded-xl3 mt-6 divide-y divide-line">
+        {[["💎",T.ref_prem,T.ref_prem_s,"⭐️"],["⭐️",T.ref_stars,T.ref_stars_s,"⭐️"]].map(([ic,t,s],i)=>(
+          <div key={i} className="flex items-center gap-3 p-4">
+            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-tgblue to-fuchsia-600 flex items-center justify-center text-2xl">{ic}</div>
+            <div className="flex-1"><div className="font-bold text-[17px]">{t}</div><div className="text-sub text-[14px]">{s} ⭐️</div></div>
+          </div>
+        ))}
+      </div>
+      <div className="flex gap-3 mt-5">
+        <button onClick={()=>{ tg?.openTelegramLink?.(`https://t.me/share/url?url=${encodeURIComponent(link)}`); }}
+          className="tap flex-1 bg-tgblue text-white font-bold text-[17px] py-4 rounded-xl3">{T.invite}</button>
+        <button onClick={()=>{ navigator.clipboard?.writeText(link); tg?.HapticFeedback?.notificationOccurred?.('success'); alert(T.copied); }}
+          className="tap w-16 bg-card2 rounded-xl3 flex items-center justify-center text-xl">⧉</button>
+      </div>
+      <div className="flex mt-5 bg-card/60 rounded-xl3 py-5">
+        <div className="flex-1 text-center"><div className="text-3xl font-bold">{fmt(data.available)}</div><div className="text-sub text-[14px]">{T.avail} ⭐️</div></div>
+        <div className="w-px bg-line"></div>
+        <div className="flex-1 text-center"><div className="text-3xl font-bold">{data.count}</div><div className="text-sub text-[14px]">{T.friends}</div></div>
+      </div>
+      <div className="text-[18px] font-bold mt-6 mb-3">{T.your_friends}</div>
+      <div className="space-y-2 pb-4">
+        {data.friends.map((f,i)=>(
+          <div key={i} className="flex items-center gap-3 bg-card/50 rounded-xl2 p-3">
+            <div className="w-10 h-10 rounded-full bg-tg flex items-center justify-center font-bold">{(f.name||"U")[0]}</div>
+            <div className="flex-1 font-medium truncate">{f.name}{f.username?` (@${f.username})`:""}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function HistoryScreen(){
+  const T = STR_CTX();
+  const [f,setF]=useState("all");
+  const [orders,setOrders]=useState(null);
+  useEffect(()=>{ if(API_BASE) api("/api/history").then(setOrders).catch(()=>setOrders([])); else setOrders(null); },[]);
+  const tabs=[["all",T.h_all],["stars","⭐️ "+T.h_stars],["premium","💜 "+T.h_prem],["gift","🎁 "+T.h_gift],["balance",T.h_acc]];
+  const kindIcon={balance:"⭐️",stars:"⭐️",premium:"💜",gift:"🎁"};
+  const shown = orders==null ? null : orders.filter(o=> f==="all"?true:o.kind===f);
+  return (
+    <div className="screen px-4 pt-3 safe-b">
+      <div className="text-[26px] font-bold mb-3">{T.hist_t}</div>
+      <div className="flex gap-2 overflow-x-auto pb-2 mb-3">
+        {tabs.map(([k,l])=>(
+          <button key={k} onClick={()=>setF(k)} className={`tap whitespace-nowrap px-5 py-2.5 rounded-full font-semibold text-[15px] ${f===k?'bg-card2 text-white':'bg-transparent border border-line text-sub'}`}>{l}</button>
+        ))}
+      </div>
+      {shown==null && (
+        // backend ulanmagan — namuna ko'rsatamiz
+        <div className="bg-rose-950/30 border border-rose-900/40 rounded-xl3 p-4 flex items-center gap-3">
+          <div className="w-11 h-11 rounded-full bg-card2 flex items-center justify-center text-xl">⭐️</div>
+          <div className="flex-1"><div className="font-semibold">{T.balance} <span className="text-green text-[14px]">{T.h_topup}</span></div><div className="text-sub text-[13px]">13 May 2026, 03:12</div></div>
+          <div className="font-bold text-[17px]">14,000.00 ⭐️</div>
+        </div>
+      )}
+      {shown!=null && shown.length===0 && <div className="text-center text-sub mt-16">{T.no_orders}</div>}
+      {shown!=null && shown.length>0 && (
+        <div className="space-y-3">
+          {shown.map(o=>(
+            <div key={o.id} className="bg-card/60 rounded-xl3 p-4 flex items-center gap-3">
+              <div className="w-11 h-11 rounded-full bg-card2 flex items-center justify-center text-xl">{kindIcon[o.kind]||"⭐️"}</div>
+              <div className="flex-1"><div className="font-semibold">{o.title}</div><div className="text-sub text-[13px]">{o.date}</div></div>
+              <div className="text-right"><div className="font-bold">{fmt(o.amount)} {T.som}</div><div className={`text-[12px] ${o.status==='done'||o.status==='paid'?'text-green':'text-sub'}`}>{o.status}</div></div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RatingScreen(){
+  const T = STR_CTX();
+  const [period,setPeriod]=useState("all");
+  const [data,setData]=useState(null);
+  useEffect(()=>{
+    if(API_BASE) api("/api/rating?period="+period).then(setData).catch(()=>setData([]));
+    else setData(RATING.filter(r=>!period||true));
+  },[period]);
+  const tabs=[["all",T.r_all],["month",T.r_month],["week",T.r_week]];
+  const list = data || [];
+  const top3 = list.slice(0,3);
+  const rest = list.slice(3);
+  const podium=[top3[1],top3[0],top3[2]].filter(Boolean); // 2,1,3
+  return (
+    <div className="screen px-4 pt-3 safe-b">
+      <div className="flex bg-card/60 rounded-full p-1 mb-6">
+        {tabs.map(([k,l])=>(
+          <button key={k} onClick={()=>setPeriod(k)} className={`tap flex-1 py-3 rounded-full font-semibold text-[15px] ${period===k?'bg-tgblue text-white':'text-sub'}`}>{l}</button>
+        ))}
+      </div>
+      {data!=null && list.length===0 && <div className="text-center text-sub mt-20">Hali reyting yo'q</div>}
+      {podium.length>0 &&
+      <div className="flex items-end justify-center gap-2 mb-8">
+        {podium.map((u,idx)=>{
+          const place = u.rank;
+          const h = place===1?150:place===2?110:90;
+          return (
+            <div key={idx} className="flex-1 flex flex-col items-center">
+              <div className={`relative ${place===1?'mb-2':''}`}>
+                <div className={`rounded-full bg-tg flex items-center justify-center text-white font-bold ${place===1?'w-24 h-24 ring-4 ring-amber-600':'w-16 h-16'}`}>
+                  {place===1?<span className="text-2xl">🏆</span>:(u.name||"U")[0]}
+                </div>
+              </div>
+              <div className="text-[13px] font-semibold text-center mt-1 leading-tight px-1">{u.name}</div>
+              <div className="bg-card2 text-[13px] px-2 py-1 rounded-full mt-1 font-semibold">{kfmt(u.stars)} ⭐️</div>
+              <div className="w-full rounded-t-2xl mt-2 flex items-start justify-center pt-3 text-2xl font-bold text-sub" style={{height:h, background: place===1?'linear-gradient(180deg,#3a2a10,#1a1a1a)':'#1a1a1a'}}>{place}</div>
+            </div>
+          );
+        })}
+      </div>}
+      <div className="space-y-3">
+        {rest.map((u,i)=>(
+          <div key={i} className="flex items-center gap-3 bg-card/60 rounded-xl3 p-4">
+            <span className="text-sub font-bold w-8">#{u.rank}</span>
+            <div className="w-12 h-12 rounded-full bg-tg flex items-center justify-center font-bold">{(u.name||"U")[0]}</div>
+            <div className="flex-1 font-bold text-[18px] truncate">{u.name}</div>
+            <div className="text-right"><div className="font-bold">{kfmt(u.stars)} ⭐️</div>{u.uzs?<div className="text-sub text-[13px]">{fmt(u.uzs)} UZS</div>:null}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ProfileScreen({user, go, setLangScreen, openAdmin}){
+  const T = STR_CTX();
+  const rows=[];
+  if(user.id===ADMIN_ID || IS_ADMIN) rows.push(["🛠","#5b8def",T.p_admin,"",()=>openAdmin()]);
+  rows.push(["🌐","#a855f7",T.p_lang,LANGS.find(l=>l.code===CUR_LANG)?.name,()=>setLangScreen(true)]);
+  rows.push(["💬","#f59e0b",T.p_help,"@"+HELP_USERNAME,()=>tg?.openTelegramLink?.(`https://t.me/${HELP_USERNAME}`)]);
+  rows.push(["📢","#eab308",T.p_news,"@"+NEWS_CHANNEL,()=>tg?.openTelegramLink?.(`https://t.me/${NEWS_CHANNEL}`)]);
+  return (
+    <div className="screen px-4 pt-3 safe-b">
+      <div className="flex flex-col items-center mt-4">
+        <Avatar user={user} size={130} ring/>
+        <div className="text-[28px] font-bold mt-4">{user.name}</div>
+        <div className="text-sub text-[18px]">@{user.username||"username"}</div>
+      </div>
+      <button onClick={()=>go("balans")} className="tap w-full mt-7 bg-card rounded-xl3 px-4 h-16 flex items-center gap-3">
+        <div className="w-9 h-9 rounded-lg bg-tgblue flex items-center justify-center">💳</div>
+        <div className="flex-1 text-left text-[18px]">{T.p_balance}</div>
+        <div className="text-tg font-semibold">0 {T.som}</div><span className="text-sub">›</span>
+      </button>
+      <div className="bg-card rounded-xl3 mt-4 divide-y divide-line">
+        {rows.map(([ic,bg,lbl,val,fn],i)=>(
+          <button key={i} onClick={fn} className="tap w-full px-4 h-16 flex items-center gap-3">
+            <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{background:bg}}>{ic}</div>
+            <div className="flex-1 text-left text-[18px]">{lbl}</div>
+            <div className="text-tg">{val}</div><span className="text-sub">›</span>
+          </button>
+        ))}
+      </div>
+      <div className="text-center text-sub text-[14px] mt-6">{VERSION}</div>
+    </div>
+  );
+}
+
+function LangSheet({onClose, onPick}){
+  const T = STR_CTX();
+  return (
+    <div className="fixed inset-0 z-50 flex items-end" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/60"></div>
+      <div onClick={e=>e.stopPropagation()} className="relative w-full bg-[#161618] rounded-t-3xl p-4 pb-8 screen">
+        <div className="w-10 h-1 bg-zinc-600 rounded-full mx-auto mb-4"></div>
+        <div className="flex items-center justify-between mb-4">
+          <div className="text-[22px] font-bold">{T.lang_title}</div>
+          <button onClick={onClose} className="tap w-9 h-9 rounded-full bg-card2 flex items-center justify-center text-sub">✕</button>
+        </div>
+        <div className="space-y-3">
+          {LANGS.map(l=>(
+            <button key={l.code} onClick={()=>onPick(l.code)}
+              className={`tap w-full flex items-center gap-4 px-4 h-16 rounded-xl2 border ${CUR_LANG===l.code?'border-tg bg-tg/10':'border-transparent bg-card2/50'}`}>
+              <span className="text-2xl">{l.flag}</span><span className="text-[18px] font-medium">{l.name}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BalansScreen({go}){
+  const T = STR_CTX();
+  const [amount,setAmount]=useState(0);
+  const quick=[10000,25000,50000,100000];
+  return (
+    <div className="screen safe-b">
+      <Header onBack={()=>go("main")} />
+      <div className="px-4">
+        <div className="bg-gradient-to-br from-indigo-900/50 to-card rounded-xl3 p-5 flex items-center justify-between mt-2">
+          <div><div className="text-sub text-[15px]">{T.cur_balance}</div><div className="text-[34px] font-bold">0 {T.som}</div></div>
+          <div className="w-14 h-14 rounded-2xl bg-indigo-600/40 flex items-center justify-center"><div className="w-8 h-8 rounded-lg bg-tgblue flex items-center justify-center">💳</div></div>
+        </div>
+        <div className="bg-card/50 rounded-xl3 p-5 mt-4">
+          <div className="text-sub text-[13px] tracking-wide">{T.topup_sum}</div>
+          <div className="flex items-end justify-between mt-1">
+            <input type="number" value={amount||""} onChange={e=>setAmount(+e.target.value||0)} placeholder="0"
+              className="bg-transparent outline-none text-[40px] font-bold w-2/3 placeholder:text-zinc-600"/>
+            <span className="text-[22px] text-sub mb-2">{T.som}</span>
+          </div>
+          <div className="text-sub text-[14px]">{T.minimal}</div>
+        </div>
+        <div className="grid grid-cols-4 gap-2 mt-4">
+          {quick.map(q=>(
+            <button key={q} onClick={()=>setAmount(q)} className="tap bg-card2/60 rounded-xl2 py-4 font-semibold text-[15px]">{fmt(q)}</button>
+          ))}
+        </div>
+        <button disabled={amount<3000} onClick={()=>alert("To'lov 4-bosqichda (Paylov) ulanadi")}
+          className={`tap w-full mt-5 py-4 rounded-xl3 font-bold text-[17px] ${amount>=3000?'bg-tgblue text-white':'bg-card2 text-sub'}`}>{T.topup_btn}</button>
+      </div>
+    </div>
+  );
+}
+
+function AdminScreen({go}){
+  const [tab,setTab]=useState("price");
+  const tabs=[["price","⭐️ Narx"],["media","🖼 Media"],["gifts","🎁 Giftlar"],["premium","💳 Premium"],["admins","👤 Adminlar"]];
+  return (
+    <div className="screen safe-b">
+      <Header onBack={()=>go("main")} />
+      <div className="px-4">
+        <div className="text-[26px] font-bold mt-1 mb-3">🛠 Admin panel</div>
+        {!API_BASE && <div className="bg-amber-500/15 text-amber-300 text-[14px] rounded-xl2 p-3 mb-4">⚠️ API_BASE yozilmagan. index.html ichida Railway havolangizni qo'ying, aks holda saqlanmaydi.</div>}
+        <div className="flex gap-2 overflow-x-auto pb-2 mb-4">
+          {tabs.map(([k,l])=>(
+            <button key={k} onClick={()=>setTab(k)} className={`tap whitespace-nowrap px-4 py-2.5 rounded-full font-semibold text-[14px] ${tab===k?'bg-tgblue text-white':'bg-card2 text-sub'}`}>{l}</button>
+          ))}
+        </div>
+        {tab==="price"   && <AdminPrice/>}
+        {tab==="media"   && <AdminMedia/>}
+        {tab==="gifts"   && <AdminGifts/>}
+        {tab==="premium" && <AdminPremium/>}
+        {tab==="admins"  && <AdminAdmins/>}
+      </div>
+    </div>
+  );
+}
+
+function AdminPrice(){
+  const [val,setVal]=useState(PER_STAR);
+  const [msg,setMsg]=useState("");
+  async function save(){
+    try{ const r=await api("/api/admin/per_star",{method:"POST",json:{value:Number(val)}});
+      PER_STAR=r.per_star; STAR_PACKS=buildPacks(); setMsg("✅ Saqlandi"); }
+    catch(e){ setMsg("❌ "+e.message); }
+  }
+  return (
+    <div className="space-y-4">
+      <div className="text-sub text-[14px]">1 ta star narxi (so'm). Hamma narsa shundan hisoblanadi.</div>
+      <input type="number" value={val} onChange={e=>setVal(e.target.value)}
+        className="w-full bg-card rounded-xl2 px-4 h-14 text-[20px] font-bold outline-none"/>
+      <div className="text-sub text-[14px]">Misol: {Number(val)||0} so'm → 100 Stars = {fmt((Number(val)||0)*100)} so'm</div>
+      <button onClick={save} className="tap w-full bg-tgblue text-white font-bold py-4 rounded-xl3">Saqlash</button>
+      {msg && <div className="text-center text-[14px]">{msg}</div>}
+    </div>
+  );
+}
+
+function MediaUploader({slot,label}){
+  const [msg,setMsg]=useState("");
+  async function up(e){
+    const f=e.target.files[0]; if(!f) return;
+    setMsg("⏳ Yuklanyapti...");
+    try{ const fd=new FormData(); fd.append("slot",slot); fd.append("file",f);
+      const r=await api("/api/admin/media",{method:"POST",body:fd});
+      CARD_MEDIA[slot]={src:r.src,type:r.type}; setMsg("✅ Yuklandi"); }
+    catch(err){ setMsg("❌ "+err.message); }
+  }
+  return (
+    <label className="tap block bg-card rounded-xl2 p-4 cursor-pointer">
+      <div className="flex items-center justify-between">
+        <span className="font-semibold">{label}</span>
+        <span className="text-tg text-[14px]">{msg||"Fayl tanlash"}</span>
+      </div>
+      <input type="file" accept=".gif,.png,.jpg,.jpeg,.webp,.mp4,.webm,.json" onChange={up} className="hidden"/>
+    </label>
+  );
+}
+
+function AdminMedia(){
+  return (
+    <div className="space-y-3">
+      <div className="text-sub text-[14px]">GIF, MP4 yoki Lottie (json) yukla. Emoji o'rniga harakatlanib turadi.</div>
+      <MediaUploader slot="stars" label="⭐️ Telegram Stars kartasi"/>
+      <MediaUploader slot="premium" label="💳 Telegram Premium kartasi"/>
+      <MediaUploader slot="gifts" label="🎁 Telegram Gifts kartasi"/>
+      <MediaUploader slot="ref" label="🐤 Referal o'rdakchasi"/>
+    </div>
+  );
+}
+
+function AdminGifts(){
+  const [list,setList]=useState([]);
+  const [form,setForm]=useState({name:"",price:"",emoji:"🎁",rare:false,file:null});
+  const [msg,setMsg]=useState("");
+  async function load(){ try{ setList(await api("/api/admin/gifts")); }catch(e){} }
+  useEffect(()=>{ load(); },[]);
+  async function add(){
+    if(!form.name||!form.price){ setMsg("Nom va narx kerak"); return; }
+    setMsg("⏳...");
+    try{ const fd=new FormData(); fd.append("name",form.name); fd.append("price",form.price);
+      fd.append("emoji",form.emoji||"🎁"); fd.append("rare",form.rare);
+      if(form.file) fd.append("file",form.file);
+      await api("/api/admin/gift",{method:"POST",body:fd});
+      setForm({name:"",price:"",emoji:"🎁",rare:false,file:null}); setMsg("✅ Qo'shildi"); load();
+    }catch(e){ setMsg("❌ "+e.message); }
+  }
+  async function del(id){ try{ await api("/api/admin/gift/"+id,{method:"DELETE"}); load(); }catch(e){} }
+  return (
+    <div className="space-y-4">
+      <div className="bg-card rounded-xl3 p-4 space-y-3">
+        <div className="font-bold">Yangi gift qo'shish</div>
+        <input value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="Nomi (masalan: Ayiq)" className="w-full bg-card2 rounded-xl2 px-4 h-12 outline-none"/>
+        <div className="flex gap-2">
+          <input type="number" value={form.price} onChange={e=>setForm({...form,price:e.target.value})} placeholder="Narxi (so'm)" className="flex-1 bg-card2 rounded-xl2 px-4 h-12 outline-none"/>
+          <input value={form.emoji} onChange={e=>setForm({...form,emoji:e.target.value})} placeholder="🎁" className="w-16 text-center bg-card2 rounded-xl2 h-12 outline-none"/>
+        </div>
+        <label className="flex items-center gap-2 text-[15px]">
+          <input type="checkbox" checked={form.rare} onChange={e=>setForm({...form,rare:e.target.checked})}/> Noodatiy
+        </label>
+        <label className="tap block bg-card2 rounded-xl2 p-3 cursor-pointer text-[14px]">
+          {form.file ? "📎 "+form.file.name : "Rasm/animatsiya (GIF/MP4/Lottie) — ixtiyoriy"}
+          <input type="file" accept=".gif,.png,.jpg,.jpeg,.webp,.mp4,.webm,.json" onChange={e=>setForm({...form,file:e.target.files[0]})} className="hidden"/>
+        </label>
+        <button onClick={add} className="tap w-full bg-tgblue text-white font-bold py-3 rounded-xl2">Qo'shish</button>
+        {msg && <div className="text-center text-[14px]">{msg}</div>}
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        {list.filter(g=>g.active).map(g=>(
+          <div key={g.id} className="relative bg-card2/60 rounded-xl2 p-3 flex flex-col items-center">
+            <button onClick={()=>del(g.id)} className="tap absolute top-1 right-1 w-6 h-6 rounded-full bg-red-500/80 text-white text-xs">✕</button>
+            <div className="my-2"><Media emoji={g.emoji} src={g.media?.src} type={g.media?.type} size={40}/></div>
+            <div className="text-[12px] font-semibold text-center leading-tight">{g.name}</div>
+            <div className="text-tg text-[12px]">{fmt(g.price)}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function AdminPremium(){
+  const [list,setList]=useState([]);
+  const [msg,setMsg]=useState("");
+  async function load(){ try{ setList(await api("/api/admin/premium")); }catch(e){} }
+  useEffect(()=>{ load(); },[]);
+  async function save(p){ try{ await api("/api/admin/premium",{method:"POST",json:p}); setMsg("✅ Saqlandi"); load(); }catch(e){ setMsg("❌ "+e.message); } }
+  return (
+    <div className="space-y-3">
+      <div className="text-sub text-[14px]">Har bir muddat narxi va chegirma foizini o'zgartiring.</div>
+      {list.map((p,i)=>(
+        <div key={p.id} className="bg-card rounded-xl3 p-4 space-y-2">
+          <div className="font-bold">{p.months===12?"1 yil":p.months+" oy"}</div>
+          <div className="flex gap-2">
+            <input type="number" defaultValue={p.price} onChange={e=>list[i].price=Number(e.target.value)} placeholder="Narx" className="flex-1 bg-card2 rounded-xl2 px-3 h-11 outline-none"/>
+            <input type="number" defaultValue={p.discount} onChange={e=>list[i].discount=Number(e.target.value)} placeholder="%" className="w-20 bg-card2 rounded-xl2 px-3 h-11 outline-none"/>
+          </div>
+          <button onClick={()=>save(list[i])} className="tap w-full bg-tgblue/90 text-white font-semibold py-2.5 rounded-xl2 text-[14px]">Saqlash</button>
+        </div>
+      ))}
+      {msg && <div className="text-center text-[14px]">{msg}</div>}
+    </div>
+  );
+}
+
+function AdminAdmins(){
+  const [list,setList]=useState([]);
+  const [id,setId]=useState("");
+  const [msg,setMsg]=useState("");
+  async function load(){ try{ setList(await api("/api/admin/admins")); }catch(e){} }
+  useEffect(()=>{ load(); },[]);
+  async function add(){ if(!id) return; try{ await api("/api/admin/admins",{method:"POST",json:{admin_id:Number(id)}}); setId(""); setMsg("✅"); load(); }catch(e){ setMsg("❌ "+e.message); } }
+  async function del(aid){ try{ await api("/api/admin/admins/"+aid,{method:"DELETE"}); load(); }catch(e){ setMsg("❌ "+e.message); } }
+  return (
+    <div className="space-y-3">
+      <div className="text-sub text-[14px]">Yangi admin Telegram ID sini qo'shing.</div>
+      <div className="flex gap-2">
+        <input type="number" value={id} onChange={e=>setId(e.target.value)} placeholder="Telegram ID" className="flex-1 bg-card rounded-xl2 px-4 h-12 outline-none"/>
+        <button onClick={add} className="tap bg-tgblue text-white font-bold px-6 rounded-xl2">Qo'shish</button>
+      </div>
+      {list.map(a=>(
+        <div key={a.id} className="bg-card rounded-xl2 px-4 h-14 flex items-center justify-between">
+          <span className="font-mono">{a.id} {a.super && <span className="text-tg text-[12px]">(asosiy)</span>}</span>
+          {!a.super && <button onClick={()=>del(a.id)} className="tap text-red-400 text-[14px]">O'chirish</button>}
+        </div>
+      ))}
+      {msg && <div className="text-center text-[14px]">{msg}</div>}
+    </div>
+  );
+}
+
+/* ---- umumiy "Sotib olish" tugmasi ---- */
+function BuyButton({label,onClick,disabled}){
+  return (
+    <button disabled={disabled} onClick={onClick}
+      className={`tap fixed left-4 right-4 bottom-[calc(env(safe-area-inset-bottom)+16px)] py-4 rounded-xl3 font-bold text-[17px] ${disabled?'bg-card2 text-sub':'bg-tgblue text-white shadow-[0_0_24px_rgba(0,122,255,.4)]'}`}>
+      {label}
+    </button>
+  );
+}
+
+/* ====================== TIL KONTEKSTI (sodda global) ====================== */
+let CUR_LANG = "uz";
+const STR_CTX = () => STR[CUR_LANG] || STR.uz;
+
+/* ====================== ASOSIY ILOVA ====================== */
+function App(){
+  const [user] = useState(getUser);
+  const [tab,setTab]=useState("main");      // main/referral/history/rating/profile
+  const [screen,setScreen]=useState(null);  // stars/premium/gifts/balans/admin
+  const [langOpen,setLangOpen]=useState(false);
+  const [, force]=useState(0);
+
+  useEffect(()=>{
+    if(tg){ tg.ready(); tg.expand(); try{tg.setHeaderColor('#000000'); tg.setBackgroundColor('#000000');}catch(e){} }
+    const saved = tg?.initDataUnsafe?.user?.language_code;
+    if(saved && STR[saved]) CUR_LANG = saved;
+
+    if(!API_BASE) return;  // backend ulanmagan — namuna bilan ishlaydi
+    (async()=>{
+      try{
+        const cfg = await api("/api/config");
+        PER_STAR = cfg.per_star || PER_STAR;
+        STAR_PACKS = buildPacks();
+        if(cfg.premium?.length) PREMIUM_PLANS = cfg.premium.map(p=>({
+          id:p.id, months:p.months, label:premLabel(p.months), price:p.price, disc:p.discount, admin:p.admin_only
+        }));
+        CARD_MEDIA = { stars:{}, premium:{}, gifts:{}, ref:{}, ...(cfg.media||{}) };
+        IS_ADMIN = !!cfg.is_admin;
+        if(cfg.lang && STR[cfg.lang]) CUR_LANG = cfg.lang;
+        const gifts = await api("/api/gifts");
+        if(gifts?.length) GIFTS = gifts.map(g=>({ id:g.id, n:g.name, e:g.emoji||"🎁", p:g.price, r:g.rare, media:g.media }));
+      }catch(e){ console.warn("API yuklanmadi:", e.message); }
+      force(x=>x+1);
+    })();
+  },[]);
+
+  const go = s => { setScreen(s); window.scrollTo(0,0); };
+  function pickLang(code){ CUR_LANG=code; setLangOpen(false); force(x=>x+1); if(API_BASE) api("/api/lang",{method:"POST",json:{lang:code}}).catch(()=>{}); }
+
+  // To'liq ekranlar (navigatsiyadan ustun)
+  if(screen==="stars")   return <StarsScreen user={user} go={go}/>;
+  if(screen==="premium") return <PremiumScreen user={user} go={go}/>;
+  if(screen==="gifts")   return <GiftsScreen go={go}/>;
+  if(screen==="balans")  return <BalansScreen go={go}/>;
+  if(screen==="admin")   return <AdminScreen go={go}/>;
+
+  return (
+    <div>
+      {tab!=="main" && <div className="px-4 pt-3"></div>}
+      {tab==="main"     && <MainScreen user={user} go={go} setTab={setTab}/>}
+      {tab==="referral" && <ReferralScreen user={user}/>}
+      {tab==="history"  && <HistoryScreen/>}
+      {tab==="rating"   && <RatingScreen/>}
+      {tab==="profile"  && <ProfileScreen user={user} go={go} setLangScreen={setLangOpen} openAdmin={()=>go("admin")}/>}
+      <BottomNav tab={tab} setTab={setTab} user={user}/>
+      {langOpen && <LangSheet onClose={()=>setLangOpen(false)} onPick={pickLang}/>}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
